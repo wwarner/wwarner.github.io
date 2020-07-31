@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>MATH IS EASY</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="js/jquery-1.11.2.min.js" type="text/javascript"></script>
+    <script src="js/main.js" type="text/javascript"></script>
+
+</head>
+
+<body>
+
+    <div id="gameContainer">
+
+        <div id="header">
+
+            <h1>
+              <select id="operator" class="operator">
+                <option value="/" selected>Division</option>
+                <option value="*">Multiplication</option>
+                <option value="-">Subtraction</option>
+                <option value="+">Addition</option>
+              </select>
+ Is Easy.</h1>
+
+            <span id="highScoreContainer" class="infoHeader">
+            High Score: <span class="metric" id="highScore">0</span>
+            </span>
+
+            <span id="currentScoreContainer" class="infoHeader">
+            Current Score: <span class="metric" id="currentScore">0</span>
+            </span>
+
+            <span id="countdownContainer" class="infoHeader">
+            Time Remaining: <span class="metric" id="countdown">0</span>
+            </span>
+
+        </div>
+
+        <div id="equationContainer" class="center">
+
+            <div id="equation">&nbsp;</div>
+
+            <div id="equationInput">
+                <input type="text" id="answer">
+            </div>
+
+        </div>
+        <div id="controls">
+
+            <button id="newGameBtn" class="btn">New Game</button>
+            <button id="endGameBtn" class="btn">End Game</button>
+
+        </div>
+
+        <div id="results">
+
+        </div>
+
+
+    </div>
+    <audio src="sounds/dimension.mp3" volume="1" autoPlay="false" muted="true" preLoad="true" id="highScoreSound"/>
+    <audio src="sounds/Positive.mp3" volume="1" autoPlay="false" muted="true" preLoad="true" id="gameOverSound"/>
+    <audio src="sounds/VideoRecord.mp3" volume="1" autoPlay="false" muted="true" preLoad="true" id="correctSound"/>
+    <audio src="sounds/VideoStop.mp3" volume="1" autoPlay="false" muted="true" preLoad="true" id="incorrectSound"/>
+
+</body>
+
+</html>

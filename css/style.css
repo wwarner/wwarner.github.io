@@ -1,0 +1,87 @@
+body {
+    font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, "Lucida Grande", sans-serif;
+    font-weight: 300;
+    color: #212121;
+    background-color: #F7F7F7;
+}
+
+#gameContainer {
+    position: relative;
+    width: 86%;
+    height: 86%;
+    padding: 2%;
+    margin: 5%;
+    background: #ffffff;
+    border-radius: 5px;
+}
+#header {
+    text-align: center;
+    font-size: 18px;
+}
+.infoHeader {
+    display: inline-block;
+    margin: 3%;
+}
+.invisible {
+    visibility: hidden;
+    position: absolute;
+    top: -9999px;
+}
+.visible {
+    visibility: visible;
+    position: static;
+}
+#equationContainer {
+    text-align: center;
+    padding: 5%;
+    text-align: center;
+    padding: 5%;
+    width: 80%;
+    margin: auto;
+    border-radius: 5px;
+    background: #F7F7F7;
+}
+#submitBtn {
+    display: block;
+    margin: 20px auto;
+}
+
+#equation {
+    font-family: georgia;
+    font-weight: bold;
+    font-size: 32px;
+    margin: 20px;
+}
+#answer {
+    padding: 10px;
+    font-size: 18px;
+    background: #FFFFFF;
+    border: 1px solid #B2B2B2;
+    border-radius: 5px;
+}
+#controls {
+    margin-top: 3%;
+    text-align: center;
+}
+
+.btn {
+    padding: 10px;
+    font-size: 14px;
+    background: #FFFFFF;
+    border: 1px solid #B2B2B2;
+    border-radius: 5px;
+    display: inline-block;
+}
+.metric {
+    font-weight: bold;
+}
+select.operator {
+  border: none;
+  outline: dashed;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  font-size: 32px;
+  font-weight: bold;
+  padding: 6px;
+}
