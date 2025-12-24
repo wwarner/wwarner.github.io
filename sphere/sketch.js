@@ -186,9 +186,10 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
   if (staticGrid.valid) {
     const { center: gridCenter, normal: gridNormal, basis } = staticGrid;
 
-    // Lazy initialize texture using createImage (avoids Chrome iframe issues with createGraphics)
+    // Lazy initialize texture using createImage (avoids Chrome/iOS iframe issues with createGraphics)
     if (!sketch.gridTexture) {
-      const texSize = 512;
+      // Use smaller texture for iOS compatibility
+      const texSize = 256;
       const img = sketch.createImage(texSize, texSize);
       img.loadPixels();
 
@@ -196,20 +197,19 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
       const lineHalfWidth = 1;
       const axisHalfWidth = 2;
 
-      // Fill with background color (light blue, semi-transparent)
+      // Fill with background color (light blue, fully opaque for iOS)
       for (let i = 0; i < img.pixels.length; i += 4) {
-        img.pixels[i] = 200;     // R
-        img.pixels[i + 1] = 200; // G
+        img.pixels[i] = 220;     // R
+        img.pixels[i + 1] = 220; // G
         img.pixels[i + 2] = 255; // B
-        img.pixels[i + 3] = 100; // A
+        img.pixels[i + 3] = 255; // A (fully opaque for iOS)
       }
 
-      // Draw non-axis grid lines first
+      // Draw non-axis grid lines first (use gray color for iOS - no alpha)
       for (let g = 0; g <= GRID_RES; g++) {
         if (g === GRID_RES / 2) continue; // Skip axes for now
         const pos = Math.floor(g * step);
         const hw = lineHalfWidth;
-        const alpha = 100;
 
         // Horizontal and vertical lines
         for (let offset = -hw; offset <= hw; offset++) {
@@ -218,10 +218,10 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
             const x = pos + offset;
             if (x >= 0 && x < texSize) {
               const idx = (y * texSize + x) * 4;
-              img.pixels[idx] = 0;
-              img.pixels[idx + 1] = 0;
-              img.pixels[idx + 2] = 0;
-              img.pixels[idx + 3] = alpha;
+              img.pixels[idx] = 150;     // Gray instead of black with alpha
+              img.pixels[idx + 1] = 150;
+              img.pixels[idx + 2] = 150;
+              img.pixels[idx + 3] = 255; // Fully opaque
             }
           }
           // Horizontal line at y = pos
@@ -229,10 +229,10 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
             const y = pos + offset;
             if (y >= 0 && y < texSize) {
               const idx = (y * texSize + x) * 4;
-              img.pixels[idx] = 0;
-              img.pixels[idx + 1] = 0;
-              img.pixels[idx + 2] = 0;
-              img.pixels[idx + 3] = alpha;
+              img.pixels[idx] = 150;     // Gray instead of black with alpha
+              img.pixels[idx + 1] = 150;
+              img.pixels[idx + 2] = 150;
+              img.pixels[idx + 3] = 255; // Fully opaque
             }
           }
         }
