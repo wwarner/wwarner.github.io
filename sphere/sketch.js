@@ -186,59 +186,60 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
   if (staticGrid.valid) {
     const { center: gridCenter, normal: gridNormal, basis } = staticGrid;
 
-    // Lazy initialize texture for this sketch instance
+    // Lazy initialize texture using createImage (avoids Chrome iframe issues with createGraphics)
     if (!sketch.gridTexture) {
-      const texSize = 1024;
-      const pg = sketch.createGraphics(texSize, texSize);
-      const scaleFactor = texSize / GRID_SIZE;
+      const texSize = 512;
+      const img = sketch.createImage(texSize, texSize);
+      img.loadPixels();
 
-      pg.translate(texSize / 2, texSize / 2);
-      pg.scale(scaleFactor);
+      const step = texSize / GRID_RES;
+      const lineHalfWidth = 1;
+      const axisHalfWidth = 2;
 
-      // Clear and Background
-      pg.clear();
-      pg.noStroke();
-      pg.fill(200, 200, 255, 100);
-      pg.rectMode(sketch.CENTER);
-      pg.rect(0, 0, GRID_SIZE, GRID_SIZE);
+      // Fill with background color (light blue, semi-transparent)
+      for (let i = 0; i < img.pixels.length; i += 4) {
+        img.pixels[i] = 200;     // R
+        img.pixels[i + 1] = 200; // G
+        img.pixels[i + 2] = 255; // B
+        img.pixels[i + 3] = 100; // A
+      }
 
-      const step = GRID_SIZE / GRID_RES; // 20 units
-      const halfSize = GRID_SIZE / 2; // 200 units
-      const halfRes = GRID_RES / 2; // 10 lines
+      // Draw grid lines
+      for (let g = 0; g <= GRID_RES; g++) {
+        const pos = Math.floor(g * step);
+        const isAxis = (g === GRID_RES / 2);
+        const hw = isAxis ? axisHalfWidth : lineHalfWidth;
+        const alpha = isAxis ? 255 : 100;
 
-      pg.textSize(24);
-      pg.textAlign(sketch.LEFT, sketch.BOTTOM);
-
-      // Loop from -10 to 10
-      for (let i = -halfRes; i <= halfRes; i++) {
-        const pos = i * step;
-
-        // Draw Lines
-        if (i === 0) {
-          // Axes
-          pg.stroke(0);
-          pg.strokeWeight(3);
-        } else {
-          // Grid lines
-          pg.stroke(0, 0, 0, 100);
-          pg.strokeWeight(1.5);
-        }
-
-        // Vertical Line (constant X = pos)
-        pg.line(pos, -halfSize, pos, halfSize);
-        // Horizontal Line (constant Y = pos)
-        pg.line(-halfSize, pos, halfSize, pos);
-
-        // Labels
-        pg.noStroke();
-        pg.fill(0);
-
-        // Origin
-        if (i === 0) {
-          pg.text('(0,0)', 5, -5);
+        // Horizontal and vertical lines
+        for (let offset = -hw; offset <= hw; offset++) {
+          // Vertical line at x = pos
+          for (let y = 0; y < texSize; y++) {
+            const x = pos + offset;
+            if (x >= 0 && x < texSize) {
+              const idx = (y * texSize + x) * 4;
+              img.pixels[idx] = 0;
+              img.pixels[idx + 1] = 0;
+              img.pixels[idx + 2] = 0;
+              img.pixels[idx + 3] = alpha;
+            }
+          }
+          // Horizontal line at y = pos
+          for (let x = 0; x < texSize; x++) {
+            const y = pos + offset;
+            if (y >= 0 && y < texSize) {
+              const idx = (y * texSize + x) * 4;
+              img.pixels[idx] = 0;
+              img.pixels[idx + 1] = 0;
+              img.pixels[idx + 2] = 0;
+              img.pixels[idx + 3] = alpha;
+            }
+          }
         }
       }
-      sketch.gridTexture = pg;
+
+      img.updatePixels();
+      sketch.gridTexture = img;
     }
 
     sketch.push();
@@ -564,12 +565,29 @@ const laserCanvas = (sketch) => {
 const gridCanvas = (sketch) => {
   let cam;
   sketch.setup = () => {
-    let canvas = sketch.createCanvas(HEIGHT, WIDTH, sketch.WEBGL);
+    let container = document.getElementById('canvas-container');
+    let w = container.clientWidth || sketch.windowWidth;
+    let h = container.clientHeight || sketch.windowHeight;
+    // Ensure we have some height
+    if (h === 0) h = 400;
+
+    // Fix for Chrome WebGL issues in iframes with CSS transforms
+    sketch.setAttributes('preserveDrawingBuffer', true);
+
+    let canvas = sketch.createCanvas(w, h, sketch.WEBGL);
     canvas.parent('canvas-container');
     sketch.angleMode(sketch.DEGREES);
     sketch.strokeWeight(strokeWeight);
     cam = sketch.createCamera();
   };
+
+  sketch.windowResized = () => {
+    let container = document.getElementById('canvas-container');
+    if (container) {
+      sketch.resizeCanvas(container.clientWidth, container.clientHeight);
+    }
+  };
+
   sketch.draw = () => {
     sketch.background('white');
     const freq = getDeterministicRandom(sketch.frameCount);
