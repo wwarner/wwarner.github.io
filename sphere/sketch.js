@@ -204,12 +204,12 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
         img.pixels[i + 3] = 100; // A
       }
 
-      // Draw grid lines
+      // Draw non-axis grid lines first
       for (let g = 0; g <= GRID_RES; g++) {
+        if (g === GRID_RES / 2) continue; // Skip axes for now
         const pos = Math.floor(g * step);
-        const isAxis = (g === GRID_RES / 2);
-        const hw = isAxis ? axisHalfWidth : lineHalfWidth;
-        const alpha = isAxis ? 255 : 100;
+        const hw = lineHalfWidth;
+        const alpha = 100;
 
         // Horizontal and vertical lines
         for (let offset = -hw; offset <= hw; offset++) {
@@ -234,6 +234,33 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
               img.pixels[idx + 2] = 0;
               img.pixels[idx + 3] = alpha;
             }
+          }
+        }
+      }
+
+      // Draw axes on top (solid black, not interrupted)
+      const axisPos = Math.floor((GRID_RES / 2) * step);
+      for (let offset = -axisHalfWidth; offset <= axisHalfWidth; offset++) {
+        // Y axis (vertical line at x = axisPos)
+        for (let y = 0; y < texSize; y++) {
+          const x = axisPos + offset;
+          if (x >= 0 && x < texSize) {
+            const idx = (y * texSize + x) * 4;
+            img.pixels[idx] = 0;
+            img.pixels[idx + 1] = 0;
+            img.pixels[idx + 2] = 0;
+            img.pixels[idx + 3] = 255;
+          }
+        }
+        // X axis (horizontal line at y = axisPos)
+        for (let x = 0; x < texSize; x++) {
+          const y = axisPos + offset;
+          if (y >= 0 && y < texSize) {
+            const idx = (y * texSize + x) * 4;
+            img.pixels[idx] = 0;
+            img.pixels[idx + 1] = 0;
+            img.pixels[idx + 2] = 0;
+            img.pixels[idx + 3] = 255;
           }
         }
       }
