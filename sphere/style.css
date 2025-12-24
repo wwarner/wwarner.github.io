@@ -3,6 +3,22 @@ body {
   margin: 0;
   padding: 0;
 }
+
 canvas {
   display: block;
+}
+
+#canvas-container {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  /* in case screen is too small */
+}
+
+#controls-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
 }
