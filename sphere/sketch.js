@@ -593,10 +593,13 @@ const gridCanvas = (sketch) => {
   let cam;
   sketch.setup = () => {
     let container = document.getElementById('canvas-container');
-    let w = container.clientWidth || sketch.windowWidth;
-    let h = container.clientHeight || sketch.windowHeight;
-    // Ensure we have some height
-    if (h === 0) h = 400;
+    // Use container dimensions, falling back to window dimensions
+    let w = container ? container.clientWidth : sketch.windowWidth;
+    let h = container ? container.clientHeight : sketch.windowHeight;
+
+    // Ensure minimum dimensions for mobile
+    if (w === 0 || w < 100) w = Math.max(sketch.windowWidth, 300);
+    if (h === 0 || h < 100) h = Math.max(sketch.windowHeight, 300);
 
     // Fix for Chrome WebGL issues in iframes with CSS transforms
     sketch.setAttributes('preserveDrawingBuffer', true);
