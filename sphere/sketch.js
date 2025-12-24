@@ -5,7 +5,7 @@ const strokeWeight = 1;
 // Initial Radius
 const INITIAL_RADIUS = 50;
 // Incr determines the number of lines of lat and lon
-const INCR = 1.0;
+const INCR = 10.0;
 // R is the radius, which is controlled by the slider
 let r = INITIAL_RADIUS;
 const MIN_RADIUS = 10,
@@ -194,13 +194,13 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
       img.loadPixels();
 
       const step = texSize / GRID_RES;
-      const lineHalfWidth = 1;
-      const axisHalfWidth = 2;
+      const lineHalfWidth = 0; // Single pixel lines
+      const axisHalfWidth = 1; // Slightly thicker axes
 
-      // Fill with background color (light blue, fully opaque for iOS)
+      // Fill with white background (fully opaque for iOS)
       for (let i = 0; i < img.pixels.length; i += 4) {
-        img.pixels[i] = 220;     // R
-        img.pixels[i + 1] = 220; // G
+        img.pixels[i] = 255; // R
+        img.pixels[i + 1] = 255; // G
         img.pixels[i + 2] = 255; // B
         img.pixels[i + 3] = 255; // A (fully opaque for iOS)
       }
@@ -208,7 +208,8 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
       // Draw non-axis grid lines first (use gray color for iOS - no alpha)
       for (let g = 0; g <= GRID_RES; g++) {
         if (g === GRID_RES / 2) continue; // Skip axes for now
-        const pos = Math.floor(g * step);
+        // Clamp to ensure edge lines are visible
+        const pos = Math.min(Math.floor(g * step), texSize - 1);
         const hw = lineHalfWidth;
 
         // Horizontal and vertical lines
@@ -218,7 +219,7 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
             const x = pos + offset;
             if (x >= 0 && x < texSize) {
               const idx = (y * texSize + x) * 4;
-              img.pixels[idx] = 150;     // Gray instead of black with alpha
+              img.pixels[idx] = 150; // Gray instead of black with alpha
               img.pixels[idx + 1] = 150;
               img.pixels[idx + 2] = 150;
               img.pixels[idx + 3] = 255; // Fully opaque
@@ -229,7 +230,7 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
             const y = pos + offset;
             if (y >= 0 && y < texSize) {
               const idx = (y * texSize + x) * 4;
-              img.pixels[idx] = 150;     // Gray instead of black with alpha
+              img.pixels[idx] = 150; // Gray instead of black with alpha
               img.pixels[idx + 1] = 150;
               img.pixels[idx + 2] = 150;
               img.pixels[idx + 3] = 255; // Fully opaque
@@ -491,9 +492,6 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
     sketch.push();
     sketch.rotateY(lon);
     if (lon % doubleRuled == 0) {
-      sketch.strokeWeight(2 * strokeWeight);
-      sketch.stroke('black');
-    } else {
       sketch.strokeWeight(strokeWeight);
       sketch.stroke('darkgrey');
     }
@@ -506,9 +504,6 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
   for (let lat = -90; lat < 90; lat += INCR / 2) {
     sketch.push();
     if (Math.abs(lat) % (doubleRuled / 2) == 0) {
-      sketch.strokeWeight(2 * strokeWeight);
-      sketch.stroke('black');
-    } else {
       sketch.strokeWeight(strokeWeight);
       sketch.stroke('darkgrey');
     }
