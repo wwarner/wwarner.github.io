@@ -36,6 +36,25 @@ const GLOW_RES = 64;
 const GLOW_DECAY = 0.94;
 let glowMap = new Float32Array(GLOW_RES * GLOW_RES);
 
+// Camera Vantage Points
+const GRID_VANTAGE_POINT = {
+  distFromGrid: 7500,
+  offsetScale: 150,
+  fov: 95
+};
+
+const REFLECTION_VANTAGE_POINT = {
+  camDistance: 150,  // Distance back along incident ray
+  upOffset: 30,      // Offset above intersection
+  fov: 60
+};
+
+// Camera animation timing (in seconds)
+const PAUSE_DURATION = 10;  // Pause at each vantage point
+const TRANSITION_DURATION = 15;  // Total time to move between vantage points
+const PHASE_DURATION = TRANSITION_DURATION / 4; // Each transition has 4 phases (3.75s each)
+const CYCLE_DURATION = (PAUSE_DURATION + TRANSITION_DURATION) * 2; // 50 seconds total
+
 let slider;
 let cameraYSlider;
 let cameraXSlider;
@@ -59,6 +78,33 @@ const vec3 = {
     a[2] * b[0] - a[0] * b[2],
     a[0] * b[1] - a[1] * b[0],
   ],
+  lerp: (a, b, t) => [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ],
+};
+
+// Smooth easing function (ease-in-out cubic)
+const easeInOutCubic = (t) => {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+};
+
+// Linear interpolation for scalars
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// Spherical linear interpolation (slerp) for smooth rotation between two directions
+const slerp = (a, b, t) => {
+  const dotProduct = vec3.dot(vec3.normalize(a), vec3.normalize(b));
+  const clampedDot = Math.max(-1, Math.min(1, dotProduct));
+  const theta = Math.acos(clampedDot) * t;
+  
+  const relativeVec = vec3.normalize(vec3.sub(b, vec3.scale(a, clampedDot)));
+  
+  return vec3.add(
+    vec3.scale(a, Math.cos(theta)),
+    vec3.scale(relativeVec, Math.sin(theta))
+  );
 };
 
 const getDeterministicRandom = (input) => {
@@ -583,6 +629,73 @@ const laserCanvas = (sketch) => {
   };
 };
 
+// 4-Phase camera transition calculator
+// Phase 1: Point camera at sphere center AND move to R1 (GRID radius)
+// Phase 2: Move along great circle at constant R1 (looking at sphere center)
+// Phase 3: Change radius from R1 to destination radius
+// Phase 4: Point camera at destination target
+const calculateTransitionState = (
+  startPos, startLookAt, startFov,
+  endPos, endLookAt, endFov,
+  sphereCenter, transitionTime
+) => {
+  const phase1End = PHASE_DURATION;
+  const phase2End = PHASE_DURATION * 2;
+  const phase3End = PHASE_DURATION * 3;
+  const phase4End = PHASE_DURATION * 4;
+
+  // R1 is the GRID_VANTAGE_POINT radius (the larger radius for traveling)
+  const startDir = vec3.normalize(vec3.sub(startPos, sphereCenter));
+  const startRadius = vec3.length(vec3.sub(startPos, sphereCenter));
+  const endDir = vec3.normalize(vec3.sub(endPos, sphereCenter));
+  const endRadius = vec3.length(vec3.sub(endPos, sphereCenter));
+  
+  // Always use the larger radius (GRID_VANTAGE_POINT) for great circle travel
+  const R1 = Math.max(startRadius, endRadius);
+
+  let camPos, lookAt, fov;
+
+  if (transitionTime < phase1End) {
+    // Phase 1: Point camera at sphere center AND move radius to R1
+    const t = easeInOutCubic(transitionTime / PHASE_DURATION);
+    
+    // Interpolate lookAt to sphere center
+    lookAt = vec3.lerp(startLookAt, sphereCenter, t);
+    
+    // Keep direction, interpolate radius to R1
+    const currentRadius = lerp(startRadius, R1, t);
+    camPos = vec3.add(sphereCenter, vec3.scale(startDir, currentRadius));
+    
+    fov = startFov;
+  } else if (transitionTime < phase2End) {
+    // Phase 2: Move along great circle at constant radius R1
+    const t = easeInOutCubic((transitionTime - phase1End) / PHASE_DURATION);
+    
+    // Spherical interpolation for direction, constant radius R1
+    const currentDir = slerp(startDir, endDir, t);
+    camPos = vec3.add(sphereCenter, vec3.scale(currentDir, R1));
+    lookAt = sphereCenter;
+    fov = startFov;
+  } else if (transitionTime < phase3End) {
+    // Phase 3: Change radius from R1 to destination radius
+    const t = easeInOutCubic((transitionTime - phase2End) / PHASE_DURATION);
+    
+    // Keep final direction, interpolate radius from R1 to endRadius
+    const currentRadius = lerp(R1, endRadius, t);
+    camPos = vec3.add(sphereCenter, vec3.scale(endDir, currentRadius));
+    lookAt = sphereCenter;
+    fov = lerp(startFov, endFov, t);
+  } else {
+    // Phase 4: Point camera at destination target
+    const t = easeInOutCubic((transitionTime - phase3End) / PHASE_DURATION);
+    camPos = endPos;
+    lookAt = vec3.lerp(sphereCenter, endLookAt, t);
+    fov = endFov;
+  }
+
+  return [camPos, lookAt, fov];
+};
+
 // --- VIEW 3: Grid View ---
 const gridCanvas = (sketch) => {
   let cam;
@@ -616,33 +729,95 @@ const gridCanvas = (sketch) => {
   sketch.draw = () => {
     sketch.background('white');
     const freq = getDeterministicRandom(sketch.frameCount);
-    const sphereYOffset = Math.sin(sketch.frameCount * freq) * 1;
-    // drawScene returns the static grid info as gridInfo because we changed implementation
+    const sphereYOffset = Math.sin(sketch.frameCount * freq) * 0.1;
     const sceneInfo = drawScene(sketch, r, sphereYOffset, true);
 
-    if (sceneInfo.gridInfo && sceneInfo.gridInfo.valid) {
+    // Calculate time in animation cycle
+    const elapsedTime = sketch.millis() / 1000;
+    const cycleTime = elapsedTime % CYCLE_DURATION;
+
+    // Calculate laser intersection point
+    const sphereRadius = r / 2;
+    const sphereCenter = [0, sphereYOffset, 0];
+    const laserRay = sceneInfo.laserRay;
+    const intersection = raySphereIntersection(
+      laserRay.origin,
+      laserRay.direction,
+      sphereRadius,
+      sphereCenter
+    );
+
+    if (intersection && intersection.hit && sceneInfo.gridInfo && sceneInfo.gridInfo.valid) {
+      const hitPoint = intersection.point;
       const gridCenter = sceneInfo.gridInfo.center;
       const gridNormal = sceneInfo.gridInfo.normal;
-
-      const distFromGrid = 3000;
-
       const basis = sceneInfo.gridInfo.basis;
-      const offsetScale = 200;
 
-      const camOffset = vec3.add(
-        vec3.scale(gridNormal, -distFromGrid),
+      // Calculate both vantage points
+      // Grid vantage point
+      const gridCamOffset = vec3.add(
+        vec3.scale(gridNormal, -GRID_VANTAGE_POINT.distFromGrid),
         vec3.add(
-          vec3.scale(basis.right, offsetScale),
-          vec3.scale(basis.up, offsetScale)
+          vec3.scale(basis.right, GRID_VANTAGE_POINT.offsetScale),
+          vec3.scale(basis.up, GRID_VANTAGE_POINT.offsetScale)
         )
       );
+      const gridCamPos = vec3.add(gridCenter, gridCamOffset);
+      const gridLookAt = gridCenter;
 
-      const camPos = vec3.add(gridCenter, camOffset);
+      // Reflection vantage point
+      const reflectionCamPos = vec3.add(
+        hitPoint,
+        vec3.add(
+          vec3.scale(vec3.scale(laserRay.direction, -1), REFLECTION_VANTAGE_POINT.camDistance),
+          [0, REFLECTION_VANTAGE_POINT.upOffset, 0]
+        )
+      );
+      const reflectionLookAt = hitPoint;
+
+      // Determine which transition we're in and calculate camera state
+      let camPos, lookAt, fov;
+      let isTransitioning = false;
+      let isForward = false; // forward = grid to reflection, backward = reflection to grid
+
+      if (cycleTime < PAUSE_DURATION) {
+        // At grid vantage point
+        camPos = gridCamPos;
+        lookAt = gridLookAt;
+        fov = GRID_VANTAGE_POINT.fov;
+      } else if (cycleTime < PAUSE_DURATION + TRANSITION_DURATION) {
+        // Transitioning from grid to reflection
+        isTransitioning = true;
+        isForward = true;
+        const transitionTime = cycleTime - PAUSE_DURATION;
+        [camPos, lookAt, fov] = calculateTransitionState(
+          gridCamPos, gridLookAt, GRID_VANTAGE_POINT.fov,
+          reflectionCamPos, reflectionLookAt, REFLECTION_VANTAGE_POINT.fov,
+          sphereCenter, transitionTime
+        );
+      } else if (cycleTime < PAUSE_DURATION * 2 + TRANSITION_DURATION) {
+        // At reflection vantage point
+        camPos = reflectionCamPos;
+        lookAt = reflectionLookAt;
+        fov = REFLECTION_VANTAGE_POINT.fov;
+      } else {
+        // Transitioning from reflection back to grid
+        isTransitioning = true;
+        isForward = false;
+        const transitionTime = cycleTime - PAUSE_DURATION * 2 - TRANSITION_DURATION;
+        [camPos, lookAt, fov] = calculateTransitionState(
+          reflectionCamPos, reflectionLookAt, REFLECTION_VANTAGE_POINT.fov,
+          gridCamPos, gridLookAt, GRID_VANTAGE_POINT.fov,
+          sphereCenter, transitionTime
+        );
+      }
 
       cam.setPosition(camPos[0], camPos[1], camPos[2]);
-      cam.lookAt(gridCenter[0], gridCenter[1], gridCenter[2]);
+      cam.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+
+      let aspect = sketch.width / sketch.height;
+      cam.perspective((fov * Math.PI) / 180, aspect, 1, 10000);
     }
-    cam.perspective((600 * Math.PI) / 180);
   };
 };
 
