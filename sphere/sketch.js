@@ -2,8 +2,8 @@
 
 const GLOBAL_STROKE_WEIGHT = 1.5;
 
-// Initial Radius
-const INITIAL_RADIUS = 50;
+// Sphere diameter
+const INITIAL_DIAMETER = 50;
 // Incr determines the number of lines of lat and lon
 const INCR = 10.0;
 
@@ -154,7 +154,7 @@ const getPlaneBasis = (normal) => {
 // Calculate the Static Grid Parameters (Fixed World State)
 // This uses INITIAL_RADIUS and offset 0 to enforce a fixed grid position
 const computeStaticGridParams = () => {
-  const sphereRadius = INITIAL_RADIUS / 2;
+  const sphereRadius = INITIAL_DIAMETER / 2;
   const sphereCenter = new p5.Vector(0, 0, 0);
 
   const laserRay = getLaserRay(sphereRadius);
@@ -182,14 +182,14 @@ const computeStaticGridParams = () => {
 let staticGridParams = null;
 
 // Shared scene drawing function
-const drawScene = (sketch, currentRadius, sphereYOffset) => {
+const drawScene = (sketch, currentRadius, sphereYOffset, sphereZOffset) => {
   // Update Glow Physics (Decay) if master
   for (let i = 0; i < glowMap.length; i++) {
     if (glowMap[i] > 0.001) glowMap[i] *= GLOW_DECAY;
     else glowMap[i] = 0;
   }
 
-  const sphereCenter = new p5.Vector(0, sphereYOffset, 0);
+  const sphereCenter = new p5.Vector(0, sphereYOffset, sphereZOffset);
   const sphereRadius = currentRadius / 2;
 
   // 1. Get Static Grid (Always draw the grid in the same place)
@@ -542,6 +542,14 @@ const calculateTransitionState = (
 
 const gridCanvas = (sketch) => {
   let cam;
+  let amplitudeSlider;
+  let phaseSlider;
+  let noiseSlider;
+  let oscillationAmplitude = 0.1; // Default amplitude value
+  let oscillationFrequency = 0.05;
+  let oscillationPhase = 0;
+  let oscillationNoise = 0.0;
+
   sketch.setup = () => {
     let container = document.getElementById('canvas-container');
     // Use container dimensions, falling back to window dimensions
@@ -568,6 +576,83 @@ const gridCanvas = (sketch) => {
     sketch.angleMode(sketch.DEGREES);
     sketch.strokeWeight(GLOBAL_STROKE_WEIGHT);
     cam = sketch.createCamera();
+
+    // Create amplitude slider
+    let controlsContainer = document.getElementById('controls-container');
+    if (controlsContainer) {
+      controlsContainer.style.display = 'block';
+      controlsContainer.style.position = 'absolute';
+      controlsContainer.style.top = '20px';
+      controlsContainer.style.left = '20px';
+      controlsContainer.style.zIndex = '1000';
+      controlsContainer.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+      controlsContainer.style.padding = '15px';
+      controlsContainer.style.borderRadius = '5px';
+      controlsContainer.style.fontFamily = 'Arial, sans-serif';
+
+      let label = document.createElement('label');
+      label.textContent = 'Oscillation Amplitude: ';
+      label.style.display = 'block';
+      label.style.marginBottom = '5px';
+      controlsContainer.appendChild(label);
+
+      amplitudeSlider = sketch.createSlider(0.0, 1.0, 0.1, 0.01);
+      amplitudeSlider.parent(controlsContainer);
+      amplitudeSlider.style.width = '200px';
+      amplitudeSlider.style.display = 'block';
+
+      let valueDisplay = document.createElement('span');
+      valueDisplay.id = 'amplitude-value';
+      valueDisplay.style.marginLeft = '10px';
+      valueDisplay.textContent = amplitudeSlider.value();
+      controlsContainer.appendChild(valueDisplay);
+
+      // Add spacing between sliders
+      let spacer = document.createElement('div');
+      spacer.style.marginTop = '15px';
+      controlsContainer.appendChild(spacer);
+
+      // Create phase slider
+      let phaseLabel = document.createElement('label');
+      phaseLabel.textContent = 'Oscillation Phase: ';
+      phaseLabel.style.display = 'block';
+      phaseLabel.style.marginBottom = '5px';
+      controlsContainer.appendChild(phaseLabel);
+
+      phaseSlider = sketch.createSlider(-1000, 1000, 0, 1);
+      phaseSlider.parent(controlsContainer);
+      phaseSlider.style.width = '200px';
+      phaseSlider.style.display = 'block';
+
+      let phaseValueDisplay = document.createElement('span');
+      phaseValueDisplay.id = 'phase-value';
+      phaseValueDisplay.style.marginLeft = '10px';
+      phaseValueDisplay.textContent = phaseSlider.value();
+      controlsContainer.appendChild(phaseValueDisplay);
+
+      // Add spacing between sliders
+      let spacer2 = document.createElement('div');
+      spacer2.style.marginTop = '15px';
+      controlsContainer.appendChild(spacer2);
+
+      // Create noise slider
+      let noiseLabel = document.createElement('label');
+      noiseLabel.textContent = 'Oscillation Noise: ';
+      noiseLabel.style.display = 'block';
+      noiseLabel.style.marginBottom = '5px';
+      controlsContainer.appendChild(noiseLabel);
+
+      noiseSlider = sketch.createSlider(0.0, 1.0, 0.0, 0.01);
+      noiseSlider.parent(controlsContainer);
+      noiseSlider.style.width = '200px';
+      noiseSlider.style.display = 'block';
+
+      let noiseValueDisplay = document.createElement('span');
+      noiseValueDisplay.id = 'noise-value';
+      noiseValueDisplay.style.marginLeft = '10px';
+      noiseValueDisplay.textContent = noiseSlider.value().toFixed(2);
+      controlsContainer.appendChild(noiseValueDisplay);
+    }
   };
 
   sketch.windowResized = () => {
@@ -579,16 +664,60 @@ const gridCanvas = (sketch) => {
 
   sketch.draw = () => {
     sketch.background('white');
-    const sphereYOffset = Math.sin(sketch.frameCount * 0.05) * 0.1;
-    const sceneInfo = drawScene(sketch, INITIAL_RADIUS, sphereYOffset);
+
+    // Update oscillation amplitude from slider
+    if (amplitudeSlider) {
+      oscillationAmplitude = amplitudeSlider.value();
+      let valueDisplay = document.getElementById('amplitude-value');
+      if (valueDisplay) {
+        valueDisplay.textContent = oscillationAmplitude.toFixed(2);
+      }
+    }
+
+    // Update oscillation phase from slider
+    if (phaseSlider) {
+      oscillationPhase = phaseSlider.value();
+      let phaseValueDisplay = document.getElementById('phase-value');
+      if (phaseValueDisplay) {
+        phaseValueDisplay.textContent = oscillationPhase;
+      }
+    }
+
+    // Update oscillation noise from slider and apply to random noise
+    let noiseLevel = 0.0;
+    if (noiseSlider) {
+      noiseLevel = noiseSlider.value();
+      let noiseValueDisplay = document.getElementById('noise-value');
+      if (noiseValueDisplay) {
+        noiseValueDisplay.textContent = noiseLevel.toFixed(2);
+      }
+    }
+
+    // Set oscillationNoise to a random value between -1.0 and 1.0, scaled by noise level
+    oscillationNoise = sketch.random(-1.0, 1.0) * noiseLevel;
+
+    const sphereYOffset =
+      Math.sin(
+        oscillationPhase +
+          oscillationNoise +
+          sketch.frameCount * oscillationFrequency
+      ) * oscillationAmplitude;
+    const sphereZOffset =
+      Math.sin(sketch.frameCount * oscillationFrequency) * oscillationAmplitude;
+    const sceneInfo = drawScene(
+      sketch,
+      INITIAL_DIAMETER,
+      sphereYOffset,
+      sphereZOffset
+    );
 
     // Calculate time in animation cycle
     const elapsedTime = sketch.millis() / 1000;
     const cycleTime = elapsedTime % CYCLE_DURATION;
 
     // Calculate laser intersection point
-    const sphereRadius = INITIAL_RADIUS / 2;
-    const sphereCenter = new p5.Vector(0, sphereYOffset, 0);
+    const sphereRadius = INITIAL_DIAMETER / 2;
+    const sphereCenter = new p5.Vector(0, sphereYOffset, sphereZOffset);
     const laserRay = sceneInfo.laserRay;
     const intersection = raySphereIntersection(
       laserRay.origin,
