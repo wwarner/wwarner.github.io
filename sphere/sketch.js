@@ -642,11 +642,19 @@ const gridCanvas = (sketch) => {
     if (w === 0 || w < 100) w = Math.max(sketch.windowWidth, 300);
     if (h === 0 || h < 100) h = Math.max(sketch.windowHeight, 300);
 
-    // Fix for Chrome WebGL issues in iframes with CSS transforms
+    // Enable WebGL antialiasing and quality settings
+    sketch.setAttributes('antialias', true);
     sketch.setAttributes('preserveDrawingBuffer', true);
+    
+    // Use higher pixel density for sharper rendering (especially on retina displays)
+    sketch.pixelDensity(Math.min(window.devicePixelRatio || 1, 2));
 
     let canvas = sketch.createCanvas(w, h, sketch.WEBGL);
     canvas.parent('canvas-container');
+    
+    // Enable smoothing for better line quality
+    sketch.smooth();
+    
     sketch.angleMode(sketch.DEGREES);
     sketch.strokeWeight(strokeWeight);
     cam = sketch.createCamera();

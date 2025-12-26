@@ -11,6 +11,13 @@ canvas {
   display: block;
   width: 100% !important;
   height: 100% !important;
+  /* Enable hardware acceleration for smoother rendering */
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+  /* Smooth rendering (not crisp/pixelated) */
+  image-rendering: auto;
+  image-rendering: smooth;
 }
 
 #canvas-container {
