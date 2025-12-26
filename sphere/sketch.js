@@ -756,18 +756,24 @@ const gridCanvas = (sketch) => {
       }
     }
 
-    // Update oscillation noise from slider and apply to random noise
-    let noiseLevel = 0.0;
+    // Update oscillation noise from slider and apply Gaussian noise
+    let noiseStdDev = 0.0;
     if (noiseSlider) {
-      noiseLevel = noiseSlider.value();
+      noiseStdDev = noiseSlider.value();
       let noiseValueDisplay = document.getElementById('noise-value');
       if (noiseValueDisplay) {
-        noiseValueDisplay.textContent = noiseLevel.toFixed(2);
+        noiseValueDisplay.textContent = noiseStdDev.toFixed(2);
       }
     }
 
-    // Set oscillationNoise to a random value between -1.0 and 1.0, scaled by noise level
-    oscillationNoise = sketch.random(-1.0, 1.0) * noiseLevel;
+    // Set oscillationNoise to a random value from Gaussian distribution
+    // Centered at 0 with standard deviation equal to slider value
+    // If slider is 0.0, set noise to exactly 0
+    if (noiseStdDev === 0.0) {
+      oscillationNoise = 0.0;
+    } else {
+      oscillationNoise = sketch.randomGaussian(0, noiseStdDev);
+    }
 
     const sphereYOffset =
       Math.sin(
