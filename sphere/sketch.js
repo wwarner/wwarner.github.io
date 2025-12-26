@@ -121,6 +121,90 @@ const reflect = (incident, normal) => {
   return p5.Vector.sub(incident, p5.Vector.mult(normal, 2 * dot));
 };
 
+// Draw a flashlight
+const drawWireframeLaserGun = (sketch, direction) => {
+  sketch.push();
+
+  // Orient the flashlight to point in the direction of the laser
+  const targetDir = direction.copy();
+  sketch.rotateZ(Math.atan2(targetDir.y, targetDir.x) * (180 / Math.PI));
+  sketch.rotateY(-Math.asin(targetDir.z) * (180 / Math.PI));
+
+  // Black/metallic color for flashlight body
+  sketch.fill('#2a2a2a');
+  sketch.stroke('#1a1a1a');
+  sketch.strokeWeight(GLOBAL_STROKE_WEIGHT);
+
+  // Main handle/body (cylindrical)
+  sketch.push();
+  sketch.translate(0, 0, 0);
+  sketch.rotateZ(90);
+  sketch.cylinder(2.5, 20, 12, 1);
+  sketch.pop();
+
+  // Grip texture rings on handle
+  for (let i = 0; i < 5; i++) {
+    sketch.push();
+    sketch.translate(-8 + i * 4, 0, 0);
+    sketch.rotateZ(90);
+    sketch.fill('#1a1a1a');
+    sketch.torus(2.6, 0.15, 8, 8);
+    sketch.pop();
+  }
+
+  // Head/reflector section (larger diameter)
+  sketch.push();
+  sketch.translate(12, 0, 0);
+  sketch.rotateZ(90);
+  sketch.fill('#333333');
+  sketch.cylinder(4, 8, 12, 1);
+  sketch.pop();
+
+  // Lens (clear/glass appearance)
+  sketch.push();
+  sketch.translate(16, 0, 0);
+  sketch.rotateZ(90);
+  sketch.fill('#e0e0e0');
+  sketch.stroke('#c0c0c0');
+  sketch.cylinder(3.8, 1, 16, 1);
+  sketch.pop();
+
+  // Lens reflection highlight
+  sketch.push();
+  sketch.translate(16.5, 1, 0);
+  sketch.fill('#ffffff');
+  sketch.noStroke();
+  sketch.sphere(0.8);
+  sketch.pop();
+
+  // Switch/button on side
+  sketch.push();
+  sketch.translate(-2, 3, 0);
+  sketch.rotateX(90);
+  sketch.fill('#4a4a4a');
+  sketch.stroke('#2a2a2a');
+  sketch.cylinder(1, 1.5, 8, 1);
+  sketch.pop();
+
+  // Switch button top
+  sketch.push();
+  sketch.translate(-2, 4, 0);
+  sketch.fill('#666666');
+  sketch.noStroke();
+  sketch.sphere(0.8);
+  sketch.pop();
+
+  // End cap (bottom of handle)
+  sketch.push();
+  sketch.translate(-10, 0, 0);
+  sketch.rotateZ(90);
+  sketch.fill('#1a1a1a');
+  sketch.cylinder(2.6, 1, 12, 1);
+  sketch.pop();
+
+  sketch.pop();
+};
+
 const getLaserRay = (sphereRadius) => {
   const startX = LASER_DISTANCE;
   const startY = 0;
@@ -416,21 +500,10 @@ const drawScene = (sketch, currentRadius, sphereYOffset, sphereZOffset) => {
     }
   }
 
-  // Laser source
+  // Laser source - wireframe laser gun
   sketch.push();
   sketch.translate(laserRay.origin.x, laserRay.origin.y, laserRay.origin.z);
-  sketch.fill(255, 255, 0);
-  sketch.noStroke();
-  sketch.sphere(8);
-  sketch.push();
-  const targetDir = laserRay.direction;
-  sketch.rotateZ(Math.atan2(targetDir.y, targetDir.x) * (180 / Math.PI));
-  sketch.rotateY(-Math.asin(targetDir.z) * (180 / Math.PI));
-  sketch.fill(255, 200, 0);
-  sketch.translate(10, 0, 0);
-  sketch.rotateZ(90);
-  sketch.cone(6, 15);
-  sketch.pop();
+  drawWireframeLaserGun(sketch, laserRay.direction);
   sketch.pop();
 
   // Sphere
@@ -619,7 +692,7 @@ const gridCanvas = (sketch) => {
       phaseLabel.style.marginBottom = '5px';
       controlsContainer.appendChild(phaseLabel);
 
-      phaseSlider = sketch.createSlider(-1000, 1000, 0, 1);
+      phaseSlider = sketch.createSlider(0.0, 2 * 3.1459, 0, 0.01);
       phaseSlider.parent(controlsContainer);
       phaseSlider.style.width = '200px';
       phaseSlider.style.display = 'block';
