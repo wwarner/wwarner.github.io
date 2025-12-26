@@ -1,19 +1,14 @@
 'use strict';
 
-const strokeWeight = 1.5;
+const GLOBAL_STROKE_WEIGHT = 1.5;
 
 // Initial Radius
 const INITIAL_RADIUS = 50;
 // Incr determines the number of lines of lat and lon
 const INCR = 10.0;
-// R is the radius, which is controlled by the slider
-let r = INITIAL_RADIUS;
-const MIN_RADIUS = 10,
-  MAX_RADIUS = 6800;
 
 // Rendering constants
 const ELLIPSE_SEGMENTS = 50;
-const CAMERA_FOV_DEGREES = 60;
 
 // Laser constants
 const INCIDENT_COLOR = [255, 0, 0]; // Red color for incident ray
@@ -40,50 +35,20 @@ let glowMap = new Float32Array(GLOW_RES * GLOW_RES);
 const GRID_VANTAGE_POINT = {
   distFromGrid: 7500,
   offsetScale: 150,
-  fov: 95
+  fov: 95,
 };
 
 const REFLECTION_VANTAGE_POINT = {
-  camDistance: 150,  // Distance back along incident ray
-  upOffset: 30,      // Offset above intersection
-  fov: 60
+  camDistance: 150, // Distance back along incident ray
+  upOffset: 30, // Offset above intersection
+  fov: 60,
 };
 
 // Camera animation timing (in seconds)
-const PAUSE_DURATION = 10;  // Pause at each vantage point
-const TRANSITION_DURATION = 15;  // Total time to move between vantage points
+const PAUSE_DURATION = 10; // Pause at each vantage point
+const TRANSITION_DURATION = 15; // Total time to move between vantage points
 const PHASE_DURATION = TRANSITION_DURATION / 4; // Each transition has 4 phases (3.75s each)
 const CYCLE_DURATION = (PAUSE_DURATION + TRANSITION_DURATION) * 2; // 50 seconds total
-
-let slider;
-let cameraYSlider;
-let cameraXSlider;
-
-const HEIGHT = 800;
-const WIDTH = HEIGHT;
-
-// Vector math helper functions
-const vec3 = {
-  dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
-  sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
-  add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
-  scale: (v, s) => [v[0] * s, v[1] * s, v[2] * s],
-  length: (v) => Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]),
-  normalize: (v) => {
-    const len = vec3.length(v);
-    return len > 0 ? vec3.scale(v, 1 / len) : [0, 0, 0];
-  },
-  cross: (a, b) => [
-    a[1] * b[2] - a[2] * b[1],
-    a[2] * b[0] - a[0] * b[2],
-    a[0] * b[1] - a[1] * b[0],
-  ],
-  lerp: (a, b, t) => [
-    a[0] + (b[0] - a[0]) * t,
-    a[1] + (b[1] - a[1]) * t,
-    a[2] + (b[2] - a[2]) * t,
-  ],
-};
 
 // Smooth easing function (ease-in-out cubic)
 const easeInOutCubic = (t) => {
@@ -95,35 +60,33 @@ const lerp = (a, b, t) => a + (b - a) * t;
 
 // Spherical linear interpolation (slerp) for smooth rotation between two directions
 const slerp = (a, b, t) => {
-  const dotProduct = vec3.dot(vec3.normalize(a), vec3.normalize(b));
+  const v1 = a.copy().normalize();
+  const v2 = b.copy().normalize();
+  const dotProduct = v1.dot(v2);
   const clampedDot = Math.max(-1, Math.min(1, dotProduct));
-  const theta = Math.acos(clampedDot) * t;
-  
-  const relativeVec = vec3.normalize(vec3.sub(b, vec3.scale(a, clampedDot)));
-  
-  return vec3.add(
-    vec3.scale(a, Math.cos(theta)),
-    vec3.scale(relativeVec, Math.sin(theta))
-  );
-};
+  const theta = Math.acos(clampedDot);
 
-const getDeterministicRandom = (input) => {
-  return 0.05;
-  let x = Math.sin(input * 10000) * 10000;
-  return (x - Math.floor(x)) * 0.005;
+  if (theta < 0.0001) return a.copy();
+
+  const factor1 = Math.sin((1 - t) * theta) / Math.sin(theta);
+  const factor2 = Math.sin(t * theta) / Math.sin(theta);
+
+  return p5.Vector.add(
+    p5.Vector.mult(v1, factor1),
+    p5.Vector.mult(v2, factor2)
+  ).mult(p5.Vector.lerp(a, b, t).mag()); // Scale by lerped magnitude
 };
 
 const raySphereIntersection = (
   rayOrigin,
   rayDir,
   sphereRadius,
-  sphereCenter = [0, 0, 0]
+  sphereCenter = new p5.Vector(0, 0, 0)
 ) => {
-  const originToCenter = vec3.sub(rayOrigin, sphereCenter);
-  const a = vec3.dot(rayDir, rayDir);
-  const b = 2 * vec3.dot(originToCenter, rayDir);
-  const c =
-    vec3.dot(originToCenter, originToCenter) - sphereRadius * sphereRadius;
+  const originToCenter = p5.Vector.sub(rayOrigin, sphereCenter);
+  const a = rayDir.dot(rayDir);
+  const b = 2 * originToCenter.dot(rayDir);
+  const c = originToCenter.dot(originToCenter) - sphereRadius * sphereRadius;
   const discriminant = b * b - 4 * a * c;
 
   if (discriminant < 0) return null;
@@ -137,21 +100,25 @@ const raySphereIntersection = (
   else if (t2 > 0) t = t2;
   else return null;
 
-  const point = vec3.add(rayOrigin, vec3.scale(rayDir, t));
+  const point = p5.Vector.add(rayOrigin, p5.Vector.mult(rayDir, t));
   return { hit: true, point, t };
 };
 
 const rayPlaneIntersection = (rayOrigin, rayDir, planePoint, planeNormal) => {
-  const denom = vec3.dot(rayDir, planeNormal);
+  const denom = rayDir.dot(planeNormal);
   if (Math.abs(denom) < 1e-6) return null; // Parallel
-  const t = vec3.dot(vec3.sub(planePoint, rayOrigin), planeNormal) / denom;
+  const t = p5.Vector.sub(planePoint, rayOrigin).dot(planeNormal) / denom;
   if (t < 0) return null; // Behind ray
-  return { hit: true, point: vec3.add(rayOrigin, vec3.scale(rayDir, t)), t };
+  return {
+    hit: true,
+    point: p5.Vector.add(rayOrigin, p5.Vector.mult(rayDir, t)),
+    t,
+  };
 };
 
 const reflect = (incident, normal) => {
-  const dot = vec3.dot(incident, normal);
-  return vec3.sub(incident, vec3.scale(normal, 2 * dot));
+  const dot = incident.dot(normal);
+  return p5.Vector.sub(incident, p5.Vector.mult(normal, 2 * dot));
 };
 
 const getLaserRay = (sphereRadius) => {
@@ -165,30 +132,30 @@ const getLaserRay = (sphereRadius) => {
   const targetY = 0;
   const targetZ = sphereRadius * Math.sin(reflectionAngleRad);
 
-  const start = [startX, startY, startZ];
-  const target = [targetX, targetY, targetZ];
+  const start = new p5.Vector(startX, startY, startZ);
+  const target = new p5.Vector(targetX, targetY, targetZ);
 
-  const direction = vec3.normalize(vec3.sub(target, start));
+  const direction = p5.Vector.sub(target, start).normalize();
 
   return { origin: start, direction };
 };
 
 // Helper to calculate coordinate system for a plane defined by normal
 const getPlaneBasis = (normal) => {
-  let up = [0, 1, 0];
-  if (Math.abs(vec3.dot(normal, up)) > 0.9) {
-    up = [0, 0, 1];
+  let up = new p5.Vector(0, 1, 0);
+  if (Math.abs(normal.dot(up)) > 0.9) {
+    up = new p5.Vector(0, 0, 1);
   }
-  const right = vec3.normalize(vec3.cross(normal, up));
-  const newUp = vec3.normalize(vec3.cross(right, normal));
+  const right = p5.Vector.cross(normal, up).normalize();
+  const newUp = p5.Vector.cross(right, normal).normalize();
   return { right, up: newUp };
 };
 
 // Calculate the Static Grid Parameters (Fixed World State)
 // This uses INITIAL_RADIUS and offset 0 to enforce a fixed grid position
-const getStaticGridParams = () => {
+const computeStaticGridParams = () => {
   const sphereRadius = INITIAL_RADIUS / 2;
-  const sphereCenter = [0, 0, 0];
+  const sphereCenter = new p5.Vector(0, 0, 0);
 
   const laserRay = getLaserRay(sphereRadius);
   const intersection = raySphereIntersection(
@@ -199,17 +166,20 @@ const getStaticGridParams = () => {
   );
 
   if (intersection && intersection.hit) {
-    const normal = vec3.normalize(vec3.sub(intersection.point, sphereCenter));
+    const normal = p5.Vector.sub(intersection.point, sphereCenter).normalize();
     const reflectedDir = reflect(laserRay.direction, normal);
-    const gridCenter = vec3.add(
+    const gridCenter = p5.Vector.add(
       intersection.point,
-      vec3.scale(reflectedDir, GRID_DISTANCE)
+      p5.Vector.mult(reflectedDir, GRID_DISTANCE)
     );
     const basis = getPlaneBasis(reflectedDir);
     return { center: gridCenter, normal: reflectedDir, basis, valid: true };
   }
   return { valid: false };
 };
+
+// Cache the static grid params since they never change (computed lazily on first use)
+let staticGridParams = null;
 
 // Shared scene drawing function
 const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
@@ -221,19 +191,22 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
     }
   }
 
-  const doubleRuled = 5;
-  const sphereCenter = [0, sphereYOffset, 0];
+  const sphereCenter = new p5.Vector(0, sphereYOffset, 0);
   const sphereRadius = currentRadius / 2;
 
   // 1. Get Static Grid (Always draw the grid in the same place)
-  const staticGrid = getStaticGridParams();
+  // Lazy initialization: compute on first use to avoid p5.Vector issues at module load
+  if (!staticGridParams) {
+    staticGridParams = computeStaticGridParams();
+  }
+  const staticGrid = staticGridParams;
 
   // Draw Static Grid
   if (staticGrid.valid) {
     const { center: gridCenter, normal: gridNormal, basis } = staticGrid;
 
     sketch.push();
-    sketch.translate(gridCenter[0], gridCenter[1], gridCenter[2]);
+    sketch.translate(gridCenter.x, gridCenter.y, gridCenter.z);
 
     // Align local plane with world grid basis
     const R = basis.right;
@@ -241,17 +214,17 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
     const N = gridNormal;
 
     sketch.applyMatrix(
-      R[0],
-      U[0],
-      N[0],
+      R.x,
+      U.x,
+      N.x,
       0,
-      R[1],
-      U[1],
-      N[1],
+      R.y,
+      U.y,
+      N.y,
       0,
-      R[2],
-      U[2],
-      N[2],
+      R.z,
+      U.z,
+      N.z,
       0,
       0,
       0,
@@ -262,26 +235,26 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
     // Draw grid lines using p5 primitives (like the sphere)
     sketch.push();
     sketch.translate(0, 0, -1);
-    
+
     // Set line properties to match sphere
-    sketch.strokeWeight(strokeWeight);
+    sketch.strokeWeight(GLOBAL_STROKE_WEIGHT);
     sketch.stroke('#444444');
-    
+
     const halfSize = GRID_SIZE / 2;
     const step = GRID_SIZE / GRID_RES;
-    
+
     // Draw vertical lines
     for (let i = 0; i <= GRID_RES; i++) {
       const x = -halfSize + i * step;
       sketch.line(x, -halfSize, x, halfSize);
     }
-    
+
     // Draw horizontal lines
     for (let i = 0; i <= GRID_RES; i++) {
       const y = -halfSize + i * step;
       sketch.line(-halfSize, y, halfSize, y);
     }
-    
+
     sketch.pop();
 
     // Draw Glow Overlay
@@ -326,7 +299,7 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
 
   if (intersection && intersection.hit) {
     const hitPoint = intersection.point;
-    const normal = vec3.normalize(vec3.sub(hitPoint, sphereCenter));
+    const normal = p5.Vector.sub(hitPoint, sphereCenter).normalize();
     const reflectedDir = reflect(laserRay.direction, normal);
 
     // Incident
@@ -334,35 +307,38 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
     sketch.stroke(...INCIDENT_COLOR);
     sketch.strokeWeight(LASER_STROKE_WEIGHT);
     sketch.line(
-      laserRay.origin[0],
-      laserRay.origin[1],
-      laserRay.origin[2],
-      hitPoint[0],
-      hitPoint[1],
-      hitPoint[2]
+      laserRay.origin.x,
+      laserRay.origin.y,
+      laserRay.origin.z,
+      hitPoint.x,
+      hitPoint.y,
+      hitPoint.z
     );
     sketch.pop();
 
     // Normal
-    const normalEnd = vec3.add(hitPoint, vec3.scale(normal, NORMAL_LENGTH));
+    const normalEnd = p5.Vector.add(
+      hitPoint,
+      p5.Vector.mult(normal, NORMAL_LENGTH)
+    );
     sketch.push();
     sketch.stroke(...NORMAL_COLOR);
     sketch.strokeWeight(LASER_STROKE_WEIGHT);
     sketch.line(
-      hitPoint[0],
-      hitPoint[1],
-      hitPoint[2],
-      normalEnd[0],
-      normalEnd[1],
-      normalEnd[2]
+      hitPoint.x,
+      hitPoint.y,
+      hitPoint.z,
+      normalEnd.x,
+      normalEnd.y,
+      normalEnd.z
     );
     sketch.pop();
 
     // Reflected (Dynamic)
     // Find where it hits static grid
-    let reflectionEnd = vec3.add(
+    let reflectionEnd = p5.Vector.add(
       hitPoint,
-      vec3.scale(reflectedDir, REFLECTION_LENGTH)
+      p5.Vector.mult(reflectedDir, REFLECTION_LENGTH)
     );
     let gridHitPoint = null;
 
@@ -384,9 +360,9 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
         // Update Glow Map if master
         if (isMaster) {
           // Project hit point to local grid coordinates
-          const diff = vec3.sub(gridHitPoint, staticGrid.center);
-          const uLocal = vec3.dot(diff, staticGrid.basis.right);
-          const vLocal = vec3.dot(diff, staticGrid.basis.up);
+          const diff = p5.Vector.sub(gridHitPoint, staticGrid.center);
+          const uLocal = diff.dot(staticGrid.basis.right);
+          const vLocal = diff.dot(staticGrid.basis.up);
 
           // Map to texture UV [0..1]
           // Grid ranges from -GRID_SIZE/2 to +GRID_SIZE/2
@@ -396,7 +372,7 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
           if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
             // Map to array index
             const xInd = Math.floor(u * GLOW_RES);
-            const yInd = Math.floor(v * GLOW_RES); // Invert y? p5 plane UV is standard.
+            const yInd = Math.floor(v * GLOW_RES);
 
             // Splat glow
             const rSplat = 2;
@@ -421,22 +397,22 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
     sketch.stroke(...REFLECTED_COLOR);
     sketch.strokeWeight(LASER_STROKE_WEIGHT);
     sketch.line(
-      hitPoint[0],
-      hitPoint[1],
-      hitPoint[2],
-      reflectionEnd[0],
-      reflectionEnd[1],
-      reflectionEnd[2]
+      hitPoint.x,
+      hitPoint.y,
+      hitPoint.z,
+      reflectionEnd.x,
+      reflectionEnd.y,
+      reflectionEnd.z
     );
     sketch.pop();
 
     // Draw Dynamic Spot on Static Grid
     if (gridHitPoint) {
       sketch.push();
-      sketch.translate(gridHitPoint[0], gridHitPoint[1], gridHitPoint[2]);
+      sketch.translate(gridHitPoint.x, gridHitPoint.y, gridHitPoint.z);
       // Move slightly towards source to avoid z-fighting
-      const spotOffset = vec3.scale(reflectedDir, -2);
-      sketch.translate(spotOffset[0], spotOffset[1], spotOffset[2]);
+      const spotOffset = p5.Vector.mult(reflectedDir, -2);
+      sketch.translate(spotOffset.x, spotOffset.y, spotOffset.z);
       sketch.fill(255, 0, 0);
       sketch.noStroke();
       sketch.sphere(8); // Visible dot
@@ -446,14 +422,14 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
 
   // Laser source
   sketch.push();
-  sketch.translate(laserRay.origin[0], laserRay.origin[1], laserRay.origin[2]);
+  sketch.translate(laserRay.origin.x, laserRay.origin.y, laserRay.origin.z);
   sketch.fill(255, 255, 0);
   sketch.noStroke();
   sketch.sphere(8);
   sketch.push();
   const targetDir = laserRay.direction;
-  sketch.rotateZ(Math.atan2(targetDir[1], targetDir[0]) * (180 / Math.PI));
-  sketch.rotateY(-Math.asin(targetDir[2]) * (180 / Math.PI));
+  sketch.rotateZ(Math.atan2(targetDir.y, targetDir.x) * (180 / Math.PI));
+  sketch.rotateY(-Math.asin(targetDir.z) * (180 / Math.PI));
   sketch.fill(255, 200, 0);
   sketch.translate(10, 0, 0);
   sketch.rotateZ(90);
@@ -470,10 +446,8 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
   for (let lon = 0; lon < 180; lon += INCR) {
     sketch.push();
     sketch.rotateY(lon);
-    if (lon % doubleRuled == 0) {
-      sketch.strokeWeight(strokeWeight);
-      sketch.stroke('#444444');
-    }
+    sketch.strokeWeight(GLOBAL_STROKE_WEIGHT);
+    sketch.stroke('#444444');
     sketch.ellipse(0, 0, currentRadius, currentRadius, ELLIPSE_SEGMENTS);
     sketch.pop();
   }
@@ -482,10 +456,8 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
   sketch.rotateX(90);
   for (let lat = -90; lat < 90; lat += INCR / 2) {
     sketch.push();
-    if (Math.abs(lat) % (doubleRuled / 2) == 0) {
-      sketch.strokeWeight(strokeWeight);
-      sketch.stroke('#444444');
-    }
+    sketch.strokeWeight(GLOBAL_STROKE_WEIGHT);
+    sketch.stroke('#444444');
     let dz = (currentRadius * Math.cos((Math.PI / 90) * lat)) / 2;
     sketch.translate(0, 0, dz);
     let latRadius = Math.abs(currentRadius * Math.sin((Math.PI / 90) * lat));
@@ -497,80 +469,20 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
   return { laserRay, gridInfo: staticGrid };
 };
 
-// --- VIEW 1: Main Reflection View ---
-const topCanvas = (sketch) => {
-  let cam;
-  sketch.setup = () => {
-    let canvas = sketch.createCanvas(HEIGHT, WIDTH, sketch.WEBGL);
-    canvas.parent('canvas-container');
-    sketch.angleMode(sketch.DEGREES);
-    sketch.strokeWeight(strokeWeight);
-    cam = sketch.createCamera();
-  };
-  sketch.draw = () => {
-    if (slider) r = Math.exp(slider.value());
-    sketch.background('white');
-
-    // Stop oscillation by setting offset to 0
-    const freq = getDeterministicRandom(sketch.frameCount);
-    const sphereYOffset = Math.sin(sketch.frameCount * freq) * 1;
-
-    // isMaster = true for topCanvas to drive glow physics
-    drawScene(sketch, r, sphereYOffset, true);
-
-    let camRad = CAMERA_OFFSET_ANGLE * (Math.PI / 180);
-    let camX = LASER_DISTANCE * Math.cos(camRad);
-    let camY = 0;
-    let camZ = LASER_DISTANCE * Math.sin(camRad);
-
-    cam.setPosition(camX, camY, camZ);
-    cam.lookAt(0, 0, 0);
-    cam.perspective((CAMERA_FOV_DEGREES * INITIAL_RADIUS) / r);
-  };
-};
-
-// --- VIEW 2: Laser View ---
-const laserCanvas = (sketch) => {
-  let cam;
-  sketch.setup = () => {
-    let canvas = sketch.createCanvas(HEIGHT, WIDTH, sketch.WEBGL);
-    canvas.parent('canvas-container');
-    sketch.angleMode(sketch.DEGREES);
-    sketch.strokeWeight(strokeWeight);
-    cam = sketch.createCamera();
-  };
-  sketch.draw = () => {
-    sketch.background('white');
-    const freq = getDeterministicRandom(sketch.frameCount);
-    const sphereYOffset = Math.sin(sketch.frameCount * freq) * 1;
-    const sceneInfo = drawScene(sketch, r, sphereYOffset, false);
-
-    const laserRay = sceneInfo.laserRay;
-    const backUpDist = 50;
-    const camPos = vec3.sub(
-      laserRay.origin,
-      vec3.scale(laserRay.direction, backUpDist)
-    );
-    const lookAtPos = vec3.add(
-      laserRay.origin,
-      vec3.scale(laserRay.direction, 100)
-    );
-
-    cam.setPosition(camPos[0], camPos[1], camPos[2]);
-    cam.lookAt(lookAtPos[0], lookAtPos[1], lookAtPos[2]);
-    cam.perspective((60 * Math.PI) / 180);
-  };
-};
-
 // 4-Phase camera transition calculator
 // Phase 1: Point camera at sphere center AND move to R1 (GRID radius)
 // Phase 2: Move along great circle at constant R1 (looking at sphere center)
 // Phase 3: Change radius from R1 to destination radius
 // Phase 4: Point camera at destination target
 const calculateTransitionState = (
-  startPos, startLookAt, startFov,
-  endPos, endLookAt, endFov,
-  sphereCenter, transitionTime
+  startPos,
+  startLookAt,
+  startFov,
+  endPos,
+  endLookAt,
+  endFov,
+  sphereCenter,
+  transitionTime
 ) => {
   const phase1End = PHASE_DURATION;
   const phase2End = PHASE_DURATION * 2;
@@ -578,11 +490,11 @@ const calculateTransitionState = (
   const phase4End = PHASE_DURATION * 4;
 
   // R1 is the GRID_VANTAGE_POINT radius (the larger radius for traveling)
-  const startDir = vec3.normalize(vec3.sub(startPos, sphereCenter));
-  const startRadius = vec3.length(vec3.sub(startPos, sphereCenter));
-  const endDir = vec3.normalize(vec3.sub(endPos, sphereCenter));
-  const endRadius = vec3.length(vec3.sub(endPos, sphereCenter));
-  
+  const startDir = p5.Vector.sub(startPos, sphereCenter).normalize();
+  const startRadius = p5.Vector.dist(startPos, sphereCenter);
+  const endDir = p5.Vector.sub(endPos, sphereCenter).normalize();
+  const endRadius = p5.Vector.dist(endPos, sphereCenter);
+
   // Always use the larger radius (GRID_VANTAGE_POINT) for great circle travel
   const R1 = Math.max(startRadius, endRadius);
 
@@ -591,38 +503,41 @@ const calculateTransitionState = (
   if (transitionTime < phase1End) {
     // Phase 1: Point camera at sphere center AND move radius to R1
     const t = easeInOutCubic(transitionTime / PHASE_DURATION);
-    
+
     // Interpolate lookAt to sphere center
-    lookAt = vec3.lerp(startLookAt, sphereCenter, t);
-    
+    lookAt = p5.Vector.lerp(startLookAt, sphereCenter, t);
+
     // Keep direction, interpolate radius to R1
     const currentRadius = lerp(startRadius, R1, t);
-    camPos = vec3.add(sphereCenter, vec3.scale(startDir, currentRadius));
-    
+    camPos = p5.Vector.add(
+      sphereCenter,
+      p5.Vector.mult(startDir, currentRadius)
+    );
+
     fov = startFov;
   } else if (transitionTime < phase2End) {
     // Phase 2: Move along great circle at constant radius R1
     const t = easeInOutCubic((transitionTime - phase1End) / PHASE_DURATION);
-    
+
     // Spherical interpolation for direction, constant radius R1
     const currentDir = slerp(startDir, endDir, t);
-    camPos = vec3.add(sphereCenter, vec3.scale(currentDir, R1));
-    lookAt = sphereCenter;
+    camPos = p5.Vector.add(sphereCenter, p5.Vector.mult(currentDir, R1));
+    lookAt = sphereCenter.copy();
     fov = startFov;
   } else if (transitionTime < phase3End) {
     // Phase 3: Change radius from R1 to destination radius
     const t = easeInOutCubic((transitionTime - phase2End) / PHASE_DURATION);
-    
+
     // Keep final direction, interpolate radius from R1 to endRadius
     const currentRadius = lerp(R1, endRadius, t);
-    camPos = vec3.add(sphereCenter, vec3.scale(endDir, currentRadius));
-    lookAt = sphereCenter;
+    camPos = p5.Vector.add(sphereCenter, p5.Vector.mult(endDir, currentRadius));
+    lookAt = sphereCenter.copy();
     fov = lerp(startFov, endFov, t);
   } else {
     // Phase 4: Point camera at destination target
     const t = easeInOutCubic((transitionTime - phase3End) / PHASE_DURATION);
-    camPos = endPos;
-    lookAt = vec3.lerp(sphereCenter, endLookAt, t);
+    camPos = endPos.copy();
+    lookAt = p5.Vector.lerp(sphereCenter, endLookAt, t);
     fov = endFov;
   }
 
@@ -645,18 +560,18 @@ const gridCanvas = (sketch) => {
     // Enable WebGL antialiasing and quality settings
     sketch.setAttributes('antialias', true);
     sketch.setAttributes('preserveDrawingBuffer', true);
-    
+
     // Use higher pixel density for sharper rendering (especially on retina displays)
     sketch.pixelDensity(Math.min(window.devicePixelRatio || 1, 2));
 
     let canvas = sketch.createCanvas(w, h, sketch.WEBGL);
     canvas.parent('canvas-container');
-    
+
     // Enable smoothing for better line quality
     sketch.smooth();
-    
+
     sketch.angleMode(sketch.DEGREES);
-    sketch.strokeWeight(strokeWeight);
+    sketch.strokeWeight(GLOBAL_STROKE_WEIGHT);
     cam = sketch.createCamera();
   };
 
@@ -669,17 +584,16 @@ const gridCanvas = (sketch) => {
 
   sketch.draw = () => {
     sketch.background('white');
-    const freq = getDeterministicRandom(sketch.frameCount);
-    const sphereYOffset = Math.sin(sketch.frameCount * freq) * 0.1;
-    const sceneInfo = drawScene(sketch, r, sphereYOffset, true);
+    const sphereYOffset = Math.sin(sketch.frameCount * 0.05) * 0.1;
+    const sceneInfo = drawScene(sketch, INITIAL_RADIUS, sphereYOffset, true);
 
     // Calculate time in animation cycle
     const elapsedTime = sketch.millis() / 1000;
     const cycleTime = elapsedTime % CYCLE_DURATION;
 
     // Calculate laser intersection point
-    const sphereRadius = r / 2;
-    const sphereCenter = [0, sphereYOffset, 0];
+    const sphereRadius = INITIAL_RADIUS / 2;
+    const sphereCenter = new p5.Vector(0, sphereYOffset, 0);
     const laserRay = sceneInfo.laserRay;
     const intersection = raySphereIntersection(
       laserRay.origin,
@@ -688,7 +602,12 @@ const gridCanvas = (sketch) => {
       sphereCenter
     );
 
-    if (intersection && intersection.hit && sceneInfo.gridInfo && sceneInfo.gridInfo.valid) {
+    if (
+      intersection &&
+      intersection.hit &&
+      sceneInfo.gridInfo &&
+      sceneInfo.gridInfo.valid
+    ) {
       const hitPoint = intersection.point;
       const gridCenter = sceneInfo.gridInfo.center;
       const gridNormal = sceneInfo.gridInfo.normal;
@@ -696,30 +615,31 @@ const gridCanvas = (sketch) => {
 
       // Calculate both vantage points
       // Grid vantage point
-      const gridCamOffset = vec3.add(
-        vec3.scale(gridNormal, -GRID_VANTAGE_POINT.distFromGrid),
-        vec3.add(
-          vec3.scale(basis.right, GRID_VANTAGE_POINT.offsetScale),
-          vec3.scale(basis.up, GRID_VANTAGE_POINT.offsetScale)
+      const gridCamOffset = p5.Vector.add(
+        p5.Vector.mult(gridNormal, -GRID_VANTAGE_POINT.distFromGrid),
+        p5.Vector.add(
+          p5.Vector.mult(basis.right, GRID_VANTAGE_POINT.offsetScale),
+          p5.Vector.mult(basis.up, GRID_VANTAGE_POINT.offsetScale)
         )
       );
-      const gridCamPos = vec3.add(gridCenter, gridCamOffset);
-      const gridLookAt = gridCenter;
+      const gridCamPos = p5.Vector.add(gridCenter, gridCamOffset);
+      const gridLookAt = gridCenter.copy();
 
       // Reflection vantage point
-      const reflectionCamPos = vec3.add(
+      const reflectionCamPos = p5.Vector.add(
         hitPoint,
-        vec3.add(
-          vec3.scale(vec3.scale(laserRay.direction, -1), REFLECTION_VANTAGE_POINT.camDistance),
-          [0, REFLECTION_VANTAGE_POINT.upOffset, 0]
+        p5.Vector.add(
+          p5.Vector.mult(
+            p5.Vector.mult(laserRay.direction, -1),
+            REFLECTION_VANTAGE_POINT.camDistance
+          ),
+          new p5.Vector(0, REFLECTION_VANTAGE_POINT.upOffset, 0)
         )
       );
-      const reflectionLookAt = hitPoint;
+      const reflectionLookAt = hitPoint.copy();
 
       // Determine which transition we're in and calculate camera state
       let camPos, lookAt, fov;
-      let isTransitioning = false;
-      let isForward = false; // forward = grid to reflection, backward = reflection to grid
 
       if (cycleTime < PAUSE_DURATION) {
         // At grid vantage point
@@ -728,13 +648,16 @@ const gridCanvas = (sketch) => {
         fov = GRID_VANTAGE_POINT.fov;
       } else if (cycleTime < PAUSE_DURATION + TRANSITION_DURATION) {
         // Transitioning from grid to reflection
-        isTransitioning = true;
-        isForward = true;
         const transitionTime = cycleTime - PAUSE_DURATION;
         [camPos, lookAt, fov] = calculateTransitionState(
-          gridCamPos, gridLookAt, GRID_VANTAGE_POINT.fov,
-          reflectionCamPos, reflectionLookAt, REFLECTION_VANTAGE_POINT.fov,
-          sphereCenter, transitionTime
+          gridCamPos,
+          gridLookAt,
+          GRID_VANTAGE_POINT.fov,
+          reflectionCamPos,
+          reflectionLookAt,
+          REFLECTION_VANTAGE_POINT.fov,
+          sphereCenter,
+          transitionTime
         );
       } else if (cycleTime < PAUSE_DURATION * 2 + TRANSITION_DURATION) {
         // At reflection vantage point
@@ -743,18 +666,22 @@ const gridCanvas = (sketch) => {
         fov = REFLECTION_VANTAGE_POINT.fov;
       } else {
         // Transitioning from reflection back to grid
-        isTransitioning = true;
-        isForward = false;
-        const transitionTime = cycleTime - PAUSE_DURATION * 2 - TRANSITION_DURATION;
+        const transitionTime =
+          cycleTime - PAUSE_DURATION * 2 - TRANSITION_DURATION;
         [camPos, lookAt, fov] = calculateTransitionState(
-          reflectionCamPos, reflectionLookAt, REFLECTION_VANTAGE_POINT.fov,
-          gridCamPos, gridLookAt, GRID_VANTAGE_POINT.fov,
-          sphereCenter, transitionTime
+          reflectionCamPos,
+          reflectionLookAt,
+          REFLECTION_VANTAGE_POINT.fov,
+          gridCamPos,
+          gridLookAt,
+          GRID_VANTAGE_POINT.fov,
+          sphereCenter,
+          transitionTime
         );
       }
 
-      cam.setPosition(camPos[0], camPos[1], camPos[2]);
-      cam.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+      cam.setPosition(camPos.x, camPos.y, camPos.z);
+      cam.lookAt(lookAt.x, lookAt.y, lookAt.z);
 
       let aspect = sketch.width / sketch.height;
       cam.perspective((fov * Math.PI) / 180, aspect, 1, 10000);
@@ -762,71 +689,4 @@ const gridCanvas = (sketch) => {
   };
 };
 
-// --- VIEW 4: Overhead View ---
-const overheadCanvas = (sketch) => {
-  let cam;
-  sketch.setup = () => {
-    let canvas = sketch.createCanvas(HEIGHT, WIDTH, sketch.WEBGL);
-    canvas.parent('canvas-container');
-    sketch.angleMode(sketch.DEGREES);
-    sketch.strokeWeight(strokeWeight);
-    cam = sketch.createCamera();
-    cam.camera(600, -4000, 0, 600, 0, 0, 0, 0, 1);
-  };
-  sketch.draw = () => {
-    sketch.background('white');
-    const freq = getDeterministicRandom(sketch.frameCount);
-    const sphereYOffset = Math.sin(sketch.frameCount * freq) * 1;
-    drawScene(sketch, r, sphereYOffset, false);
-    // Camera is static, set in setup
-  };
-};
-
-// let topP5 = new p5(topCanvas);
-// let laserP5 = new p5(laserCanvas);
 let gridP5 = new p5(gridCanvas);
-// let overheadP5 = new p5(overheadCanvas);
-
-// Controls
-let radiusTxt = (radius) => {
-  return `radius: ${radius.toFixed(1).padStart(4)}`;
-};
-
-let bottomCanvas = (sketch) => {
-  const X = WIDTH * 0.05,
-    Y = 50,
-    W = 200,
-    L = 20;
-
-  sketch.setup = () => {
-    let canvas = sketch.createCanvas(400, 200);
-    canvas.parent('controls-container');
-
-    let sliderStep = 0.01;
-    slider = sketch.createSlider(
-      Math.log(MIN_RADIUS),
-      Math.log(MAX_RADIUS),
-      Math.log(INITIAL_RADIUS),
-      sliderStep
-    );
-    slider.parent('controls-container');
-    slider.style('width', '200px');
-    slider.fValue = () => {
-      return Math.exp(slider.value());
-    };
-  };
-
-  sketch.draw = () => {
-    sketch.background('white');
-    sketch.textSize(15);
-    sketch.textAlign(sketch.LEFT, sketch.CENTER);
-    sketch.noStroke();
-    sketch.fill(0);
-
-    let radius = slider.fValue();
-    sketch.text(radiusTxt(radius), 10, 40);
-    sketch.text('Radius Control', 10, 10);
-  };
-};
-
-// let bottomP5 = new p5(bottomCanvas);
