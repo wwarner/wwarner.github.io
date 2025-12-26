@@ -182,13 +182,11 @@ const computeStaticGridParams = () => {
 let staticGridParams = null;
 
 // Shared scene drawing function
-const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
+const drawScene = (sketch, currentRadius, sphereYOffset) => {
   // Update Glow Physics (Decay) if master
-  if (isMaster) {
-    for (let i = 0; i < glowMap.length; i++) {
-      if (glowMap[i] > 0.001) glowMap[i] *= GLOW_DECAY;
-      else glowMap[i] = 0;
-    }
+  for (let i = 0; i < glowMap.length; i++) {
+    if (glowMap[i] > 0.001) glowMap[i] *= GLOW_DECAY;
+    else glowMap[i] = 0;
   }
 
   const sphereCenter = new p5.Vector(0, sphereYOffset, 0);
@@ -357,35 +355,33 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
           reflectionEnd = gridHitPoint;
         }
 
-        // Update Glow Map if master
-        if (isMaster) {
-          // Project hit point to local grid coordinates
-          const diff = p5.Vector.sub(gridHitPoint, staticGrid.center);
-          const uLocal = diff.dot(staticGrid.basis.right);
-          const vLocal = diff.dot(staticGrid.basis.up);
+        // Update Glow Map
+        // Project hit point to local grid coordinates
+        const diff = p5.Vector.sub(gridHitPoint, staticGrid.center);
+        const uLocal = diff.dot(staticGrid.basis.right);
+        const vLocal = diff.dot(staticGrid.basis.up);
 
-          // Map to texture UV [0..1]
-          // Grid ranges from -GRID_SIZE/2 to +GRID_SIZE/2
-          const u = (uLocal + GRID_SIZE / 2) / GRID_SIZE;
-          const v = (vLocal + GRID_SIZE / 2) / GRID_SIZE;
+        // Map to texture UV [0..1]
+        // Grid ranges from -GRID_SIZE/2 to +GRID_SIZE/2
+        const u = (uLocal + GRID_SIZE / 2) / GRID_SIZE;
+        const v = (vLocal + GRID_SIZE / 2) / GRID_SIZE;
 
-          if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
-            // Map to array index
-            const xInd = Math.floor(u * GLOW_RES);
-            const yInd = Math.floor(v * GLOW_RES);
+        if (u >= 0 && u <= 1 && v >= 0 && v <= 1) {
+          // Map to array index
+          const xInd = Math.floor(u * GLOW_RES);
+          const yInd = Math.floor(v * GLOW_RES);
 
-            // Splat glow
-            const rSplat = 2;
-            for (let dy = -rSplat; dy <= rSplat; dy++) {
-              for (let dx = -rSplat; dx <= rSplat; dx++) {
-                const nx = xInd + dx;
-                const ny = yInd + dy;
-                if (nx >= 0 && nx < GLOW_RES && ny >= 0 && ny < GLOW_RES) {
-                  const idx = nx + ny * GLOW_RES;
-                  const distSq = dx * dx + dy * dy;
-                  const amount = Math.exp(-distSq * 0.5); // Gaussian-ish
-                  glowMap[idx] = Math.min(1.0, glowMap[idx] + amount * 0.2); // Add brightness
-                }
+          // Splat glow
+          const rSplat = 2;
+          for (let dy = -rSplat; dy <= rSplat; dy++) {
+            for (let dx = -rSplat; dx <= rSplat; dx++) {
+              const nx = xInd + dx;
+              const ny = yInd + dy;
+              if (nx >= 0 && nx < GLOW_RES && ny >= 0 && ny < GLOW_RES) {
+                const idx = nx + ny * GLOW_RES;
+                const distSq = dx * dx + dy * dy;
+                const amount = Math.exp(-distSq * 0.5); // Gaussian-ish
+                glowMap[idx] = Math.min(1.0, glowMap[idx] + amount * 0.2); // Add brightness
               }
             }
           }
@@ -544,7 +540,6 @@ const calculateTransitionState = (
   return [camPos, lookAt, fov];
 };
 
-// --- VIEW 3: Grid View ---
 const gridCanvas = (sketch) => {
   let cam;
   sketch.setup = () => {
@@ -585,7 +580,7 @@ const gridCanvas = (sketch) => {
   sketch.draw = () => {
     sketch.background('white');
     const sphereYOffset = Math.sin(sketch.frameCount * 0.05) * 0.1;
-    const sceneInfo = drawScene(sketch, INITIAL_RADIUS, sphereYOffset, true);
+    const sceneInfo = drawScene(sketch, INITIAL_RADIUS, sphereYOffset);
 
     // Calculate time in animation cycle
     const elapsedTime = sketch.millis() / 1000;
