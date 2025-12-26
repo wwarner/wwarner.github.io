@@ -1,6 +1,6 @@
 'use strict';
 
-const strokeWeight = 1;
+const strokeWeight = 1.5;
 
 // Initial Radius
 const INITIAL_RADIUS = 50;
@@ -232,90 +232,6 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
   if (staticGrid.valid) {
     const { center: gridCenter, normal: gridNormal, basis } = staticGrid;
 
-    // Lazy initialize texture using createImage (avoids Chrome/iOS iframe issues with createGraphics)
-    if (!sketch.gridTexture) {
-      // Use smaller texture for iOS compatibility
-      const texSize = 256;
-      const img = sketch.createImage(texSize, texSize);
-      img.loadPixels();
-
-      const step = texSize / GRID_RES;
-      const lineHalfWidth = 0; // Single pixel lines
-      const axisHalfWidth = 1; // Slightly thicker axes
-
-      // Fill with white background (fully opaque for iOS)
-      for (let i = 0; i < img.pixels.length; i += 4) {
-        img.pixels[i] = 255; // R
-        img.pixels[i + 1] = 255; // G
-        img.pixels[i + 2] = 255; // B
-        img.pixels[i + 3] = 255; // A (fully opaque for iOS)
-      }
-
-      // Draw non-axis grid lines first (use gray color for iOS - no alpha)
-      for (let g = 0; g <= GRID_RES; g++) {
-        if (g === GRID_RES / 2) continue; // Skip axes for now
-        // Clamp to ensure edge lines are visible
-        const pos = Math.min(Math.floor(g * step), texSize - 1);
-        const hw = lineHalfWidth;
-
-        // Horizontal and vertical lines
-        for (let offset = -hw; offset <= hw; offset++) {
-          // Vertical line at x = pos
-          for (let y = 0; y < texSize; y++) {
-            const x = pos + offset;
-            if (x >= 0 && x < texSize) {
-              const idx = (y * texSize + x) * 4;
-              img.pixels[idx] = 150; // Gray instead of black with alpha
-              img.pixels[idx + 1] = 150;
-              img.pixels[idx + 2] = 150;
-              img.pixels[idx + 3] = 255; // Fully opaque
-            }
-          }
-          // Horizontal line at y = pos
-          for (let x = 0; x < texSize; x++) {
-            const y = pos + offset;
-            if (y >= 0 && y < texSize) {
-              const idx = (y * texSize + x) * 4;
-              img.pixels[idx] = 150; // Gray instead of black with alpha
-              img.pixels[idx + 1] = 150;
-              img.pixels[idx + 2] = 150;
-              img.pixels[idx + 3] = 255; // Fully opaque
-            }
-          }
-        }
-      }
-
-      // Draw axes on top (solid black, not interrupted)
-      const axisPos = Math.floor((GRID_RES / 2) * step);
-      for (let offset = -axisHalfWidth; offset <= axisHalfWidth; offset++) {
-        // Y axis (vertical line at x = axisPos)
-        for (let y = 0; y < texSize; y++) {
-          const x = axisPos + offset;
-          if (x >= 0 && x < texSize) {
-            const idx = (y * texSize + x) * 4;
-            img.pixels[idx] = 0;
-            img.pixels[idx + 1] = 0;
-            img.pixels[idx + 2] = 0;
-            img.pixels[idx + 3] = 255;
-          }
-        }
-        // X axis (horizontal line at y = axisPos)
-        for (let x = 0; x < texSize; x++) {
-          const y = axisPos + offset;
-          if (y >= 0 && y < texSize) {
-            const idx = (y * texSize + x) * 4;
-            img.pixels[idx] = 0;
-            img.pixels[idx + 1] = 0;
-            img.pixels[idx + 2] = 0;
-            img.pixels[idx + 3] = 255;
-          }
-        }
-      }
-
-      img.updatePixels();
-      sketch.gridTexture = img;
-    }
-
     sketch.push();
     sketch.translate(gridCenter[0], gridCenter[1], gridCenter[2]);
 
@@ -343,12 +259,29 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
       1
     );
 
-    // Static Grid Plane
+    // Draw grid lines using p5 primitives (like the sphere)
     sketch.push();
     sketch.translate(0, 0, -1);
-    sketch.texture(sketch.gridTexture);
-    sketch.noStroke();
-    sketch.plane(GRID_SIZE, GRID_SIZE);
+    
+    // Set line properties to match sphere
+    sketch.strokeWeight(strokeWeight);
+    sketch.stroke('#444444');
+    
+    const halfSize = GRID_SIZE / 2;
+    const step = GRID_SIZE / GRID_RES;
+    
+    // Draw vertical lines
+    for (let i = 0; i <= GRID_RES; i++) {
+      const x = -halfSize + i * step;
+      sketch.line(x, -halfSize, x, halfSize);
+    }
+    
+    // Draw horizontal lines
+    for (let i = 0; i <= GRID_RES; i++) {
+      const y = -halfSize + i * step;
+      sketch.line(-halfSize, y, halfSize, y);
+    }
+    
     sketch.pop();
 
     // Draw Glow Overlay
@@ -539,7 +472,7 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
     sketch.rotateY(lon);
     if (lon % doubleRuled == 0) {
       sketch.strokeWeight(strokeWeight);
-      sketch.stroke('darkgrey');
+      sketch.stroke('#444444');
     }
     sketch.ellipse(0, 0, currentRadius, currentRadius, ELLIPSE_SEGMENTS);
     sketch.pop();
@@ -551,7 +484,7 @@ const drawScene = (sketch, currentRadius, sphereYOffset, isMaster = false) => {
     sketch.push();
     if (Math.abs(lat) % (doubleRuled / 2) == 0) {
       sketch.strokeWeight(strokeWeight);
-      sketch.stroke('darkgrey');
+      sketch.stroke('#444444');
     }
     let dz = (currentRadius * Math.cos((Math.PI / 90) * lat)) / 2;
     sketch.translate(0, 0, dz);
@@ -709,11 +642,19 @@ const gridCanvas = (sketch) => {
     if (w === 0 || w < 100) w = Math.max(sketch.windowWidth, 300);
     if (h === 0 || h < 100) h = Math.max(sketch.windowHeight, 300);
 
-    // Fix for Chrome WebGL issues in iframes with CSS transforms
+    // Enable WebGL antialiasing and quality settings
+    sketch.setAttributes('antialias', true);
     sketch.setAttributes('preserveDrawingBuffer', true);
+    
+    // Use higher pixel density for sharper rendering (especially on retina displays)
+    sketch.pixelDensity(Math.min(window.devicePixelRatio || 1, 2));
 
     let canvas = sketch.createCanvas(w, h, sketch.WEBGL);
     canvas.parent('canvas-container');
+    
+    // Enable smoothing for better line quality
+    sketch.smooth();
+    
     sketch.angleMode(sketch.DEGREES);
     sketch.strokeWeight(strokeWeight);
     cam = sketch.createCamera();
